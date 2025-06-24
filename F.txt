@@ -1,0 +1,251 @@
+BLAZOR .NET8 - FRONT
+
+1. HTTPS - INCLUDE SINGLE SAMPLE PAGES
+
+@page "/productos"
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Productos</PageTitle>
+
+<h1>Gestión de Productos</h1>
+
+<!-- ✅ ALERTA DE MENSAJE -->
+@if (!string.IsNullOrEmpty(mensajeExito))
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @mensajeExito
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<!-- 🧾 FORMULARIO -->
+<div class="mb-4">
+    <h4>Formulario de producto</h4>
+    <div class="form-group">
+        <label>Nombre:</label>
+        <input class="form-control" @bind="nuevoProducto.Nombre" />
+    </div>
+    <div class="form-group">
+        <label>Precio:</label>
+        <input class="form-control" @bind="nuevoProducto.Precio" />
+    </div>
+    <div class="form-group">
+        <label>Cantidad:</label>
+        <input class="form-control" @bind="nuevoProducto.CantidadTexto" />
+    </div>
+    <button class="btn btn-primary mt-2" @onclick="CrearProducto">Guardar</button>
+    <button class="btn btn-success mt-2 ms-2" @onclick="ActualizarProducto" disabled="@(!PuedeActualizar)">Actualizar</button>
+    <button class="btn btn-danger mt-2 ms-2" @onclick="EliminarProducto" disabled="@(!PuedeActualizar)">Eliminar</button>
+</div>
+
+<!-- 📋 LISTADO -->
+<h4>Listado de Productos</h4>
+
+@if (productos == null)
+{
+    <p><em>Cargando productos...</em></p>
+}
+else if (!productos.Any())
+{
+    <p><em>No se encontraron productos.</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Precio</th>
+                <th>Cantidad</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var producto in productos)
+            {
+                <tr>
+                    <td>@producto.Id</td>
+                    <td>@producto.Nombre</td>
+                    <td>@producto.Precio</td>
+                    <td>@producto.Cantidad</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning" @onclick="() => SeleccionarProducto(producto)">Seleccionar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Producto>? productos;
+    private Producto nuevoProducto = new Producto();
+    private string mensajeExito = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ObtenerProductos();
+    }
+
+    private async Task ObtenerProductos()
+    {
+        try
+        {
+            productos = await Http.GetFromJsonAsync<List<Producto>>("http://localhost:5194/api/Productos/lista");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al obtener productos: {ex.Message}");
+            productos = new List<Producto>();
+        }
+    }
+
+    private async Task CrearProducto()
+    {
+        try
+        {
+            if (!int.TryParse(nuevoProducto.CantidadTexto, out int cantidad))
+            {
+                Console.WriteLine("Cantidad inválida.");
+                return;
+            }
+
+            var productoEnviar = new Producto
+                {
+                    Nombre = nuevoProducto.Nombre,
+                    Precio = nuevoProducto.Precio,
+                    Cantidad = cantidad
+                };
+
+            var respuesta = await Http.PostAsJsonAsync("http://localhost:5194/api/Productos/crear", productoEnviar);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                await ObtenerProductos();
+                nuevoProducto = new Producto();
+                MostrarMensaje("Datos guardados correctamente.");
+            }
+            else
+            {
+                Console.WriteLine("Error al crear producto: " + await respuesta.Content.ReadAsStringAsync());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error en POST: {ex.Message}");
+        }
+    }
+
+    private async Task ActualizarProducto()
+    {
+        try
+        {
+            if (nuevoProducto.Id == 0)
+            {
+                Console.WriteLine("Debe seleccionar un producto para actualizar.");
+                return;
+            }
+
+            if (!int.TryParse(nuevoProducto.CantidadTexto, out int cantidad))
+            {
+                Console.WriteLine("Cantidad inválida.");
+                return;
+            }
+
+            var productoEnviar = new Producto
+                {
+                    Id = nuevoProducto.Id,
+                    Nombre = nuevoProducto.Nombre,
+                    Precio = nuevoProducto.Precio,
+                    Cantidad = cantidad
+                };
+
+            var url = $"http://localhost:5194/api/productos/actualizar/{productoEnviar.Id}";
+            var respuesta = await Http.PutAsJsonAsync(url, productoEnviar);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                await ObtenerProductos();
+                nuevoProducto = new Producto();
+                MostrarMensaje("Datos actualizados correctamente.");
+            }
+            else
+            {
+                Console.WriteLine("Error al actualizar producto: " + await respuesta.Content.ReadAsStringAsync());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error en PUT: {ex.Message}");
+        }
+    }
+
+    private async Task EliminarProducto()
+    {
+        try
+        {
+            if (nuevoProducto.Id == 0)
+            {
+                Console.WriteLine("Debe seleccionar un producto para eliminar.");
+                return;
+            }
+
+            bool confirmar = await JS.InvokeAsync<bool>("confirm", $"¿Seguro que deseas eliminar el producto con ID {nuevoProducto.Id}?");
+            if (!confirmar)
+                return;
+
+            var url = $"http://localhost:5194/api/productos/eliminar/{nuevoProducto.Id}";
+            var respuesta = await Http.DeleteAsync(url);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                await ObtenerProductos();
+                nuevoProducto = new Producto();
+                MostrarMensaje("Producto eliminado correctamente.");
+            }
+            else
+            {
+                Console.WriteLine("Error al eliminar producto: " + await respuesta.Content.ReadAsStringAsync());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error en DELETE: {ex.Message}");
+        }
+    }
+
+    private void SeleccionarProducto(Producto producto)
+    {
+        nuevoProducto.Id = producto.Id;
+        nuevoProducto.Nombre = producto.Nombre;
+        nuevoProducto.Precio = producto.Precio;
+        nuevoProducto.CantidadTexto = producto.Cantidad.ToString();
+    }
+
+    private bool PuedeActualizar => nuevoProducto.Id > 0;
+
+    private async void MostrarMensaje(string mensaje)
+    {
+        mensajeExito = mensaje;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("setTimeout", DotNetObjectReference.Create(this), "LimpiarMensaje", 3000);
+    }
+
+    [JSInvokable]
+    public void LimpiarMensaje()
+    {
+        mensajeExito = string.Empty;
+        StateHasChanged();
+    }
+
+    public class Producto
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } 
+        public string Precio { get; set; } 
+        public int Cantidad { get; set; }
+        public string CantidadTexto { get; set; } = "";
+    }
+}
